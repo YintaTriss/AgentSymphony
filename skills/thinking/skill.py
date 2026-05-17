@@ -16,7 +16,7 @@ from typing import Any, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agent_symphony.shared import (
+from shared import (
     Skill,
     SkillCapability,
     SharedContext,

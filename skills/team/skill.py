@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from agentteam.team import TeamManager
 
-from agent_symphony.shared import (
+from shared import (
     Skill,
     SkillCapability,
     SharedContext,

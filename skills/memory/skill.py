@@ -19,7 +19,7 @@ from typing import Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
-from agent_symphony.shared import (
+from shared import (
     SharedContext,
     get_context,
     CallerInfo,
