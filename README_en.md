@@ -106,8 +106,8 @@ team ←→ search
 | Project | URL | Description |
 |---------|-----|-------------|
 | AgentSymphony | [GitHub](https://github.com/YintaTriss/AgentSymphony) | Main repo (skill symphony) |
-| MemorySkill | [GitHub](https://github.com/YintaTriss/MemorySkill) | Standalone memory skill |
-| SearchSkill | [GitHub](https://github.com/YintaTriss/SearchSkill) | Standalone search skill |
+| AgentMemory | [GitHub](https://github.com/YintaTriss/AgentMemory) | Standalone memory skill |
+| AgentSearch | [GitHub](https://github.com/YintaTriss/AgentSearch) | Standalone search skill |
 | AgentTeam | [GitHub](https://github.com/YintaTriss/AgentTeam) | Multi-agent collaboration |
 | Agent-Superthinking | [GitHub](https://github.com/YintaTriss/Agent-Superthinking) | Deep thinking (thinking's expert perspectives) |
 

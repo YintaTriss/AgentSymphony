@@ -264,8 +264,8 @@ class Skill:
 | 项目 | 仓库 | 说明 |
 |------|------|------|
 | AgentSymphony | [GitHub](https://github.com/YintaTriss/AgentSymphony) | 主仓库（技能交响乐） |
-| MemorySkill | [GitHub](https://github.com/YintaTriss/MemorySkill) | 独立记忆技能 |
-| SearchSkill | [GitHub](https://github.com/YintaTriss/SearchSkill) | 独立搜索技能 |
+| AgentMemory | [GitHub](https://github.com/YintaTriss/AgentMemory) | 独立记忆技能 |
+| AgentSearch | [GitHub](https://github.com/YintaTriss/AgentSearch) | 独立搜索技能 |
 | AgentTeam | [GitHub](https://github.com/YintaTriss/AgentTeam) | 多智能体协作框架 |
 | Agent-Superthinking | [GitHub](https://github.com/YintaTriss/Agent-Superthinking) | 深度思考框架（thinking 的专家视角） |
 
