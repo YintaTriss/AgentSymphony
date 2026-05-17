@@ -272,6 +272,8 @@ class ThinkingSkill:
                 result = self._evaluate_clarity(params)
             elif action == "status":
                 result = self._get_status(params)
+            elif action == "dialog":
+                result = self._dialog_mode(params)
             else:
                 return self._error_response(
                     "ACTION_NOT_FOUND",
@@ -326,6 +328,9 @@ class ThinkingSkill:
         elif event == "context.update":
             # 更新上下文
             self._handle_context_update(data)
+        elif event == "skill.result":
+            # 技能执行结果（用于 dialog 模式回调）
+            self._handle_skill_result(data)
 
     # ==================== 技能间调用处理 ====================
 
@@ -352,6 +357,390 @@ class ThinkingSkill:
             self._context.set(key, value)
         
         return {"updated": True, "key": key}
+
+    def _handle_skill_result(self, data: dict):
+        """
+        处理技能执行结果回调
+        
+        用于 dialog 模式中，接收其他技能执行完成后发回的结果
+        """
+        skill_name = data.get("skill")
+        result = data.get("result", {})
+        success = data.get("success", False)
+        
+        if success:
+            logging.info(f"[Thinking] Skill {skill_name} completed successfully")
+        else:
+            error = data.get("error", "Unknown error")
+            logging.warning(f"[Thinking] Skill {skill_name} failed: {error}")
+        
+        return {"processed": True, "skill": skill_name, "success": success}
+
+    # ==================== 对话模式（指挥家）====================
+
+    def _dialog_mode(self, params: dict) -> dict:
+        """
+        对话模式 - 指挥家的核心入口
+        
+        用于与用户进行多轮对话，直到问题解决。
+        这是交响乐的"演奏模式"，指挥家引导整个对话流程。
+        
+        Args:
+            params: 包含 message 和可选的 context 更新
+            
+        Returns:
+            {
+                "response": "面向用户的回复",
+                "skill_requests": [...],  # 可选，需要执行的技能申请
+                "skill_results": {...},   # 可选，技能执行结果
+                "state": "clarifying|planning|executing|completed",
+                "done": false             # 是否完成
+            }
+        """
+        message = params.get("message", "")
+        user_answers = params.get("answers", {})  # 用户对问题的回答
+        skill_results = params.get("skill_results", {})  # 其他技能的结果
+        
+        # 处理技能结果回调
+        if skill_results:
+            self._process_skill_results(skill_results)
+        
+        # 检查是否是第一次对话（初始化）
+        if not self._context.get("symphony_started"):
+            return self._symphony_intro()
+        
+        # 处理用户回答
+        if user_answers:
+            self._process_user_answers(user_answers)
+        elif message:
+            # 新消息 -> 理解需求或继续对话
+            return self._handle_user_message(message)
+        
+        # 根据当前状态决定下一步
+        return self._decide_next_step()
+
+    def _symphony_intro(self) -> dict:
+        """
+        交响乐开场白 - 指挥家自我介绍
+        """
+        self._context.set("symphony_started", True)
+        self._context.set("symphony_phase", "clarifying")  # clarifying | planning | executing | completed
+        self._context.set("user_answers", {})
+        
+        intro = (
+            "🎵 **你好，我是交响乐大家庭的指挥家。**\n\n"
+            "我负责协调thinking（思考）、memory（记忆）、search（搜索）、team（执行）"
+            "这四位成员，帮你把事情办好。\n\n"
+            "现在，请告诉我你想要完成的事情吧。"
+        )
+        
+        return {
+            "response": intro,
+            "state": "clarifying",
+            "done": False,
+            "meta": {
+                "conductor": "thinking",
+                "symphony": "agent-symphony"
+            }
+        }
+
+    def _handle_user_message(self, message: str) -> dict:
+        """
+        处理用户消息
+        """
+        phase = self._context.get("symphony_phase", "clarifying")
+        
+        if phase == "clarifying":
+            # 理解需求，评估明确度
+            return self._clarify_requirement(message)
+        elif phase == "planning":
+            # 制定/确认计划
+            return self._handle_plan_confirmation(message)
+        elif phase == "executing":
+            # 执行中，汇报进度
+            return self._handle_execution_progress(message)
+        elif phase == "completed":
+            # 已完成，等待新需求或结束
+            return self._handle_completion(message)
+        
+        return self._clarify_requirement(message)
+
+    def _clarify_requirement(self, message: str) -> dict:
+        """
+        澄清需求阶段
+        """
+        # 理解需求
+        result = self._understand_requirement({"requirement": message})
+        clarity = result.get("clarity_score", 0)
+        can_proceed = result.get("can_proceed", False)
+        
+        # 存储需求到记忆
+        self._store_requirement(message)
+        
+        if can_proceed:
+            # 需求足够清晰，进入计划阶段
+            self._context.set("symphony_phase", "planning")
+            self._context.set("clarity_score", clarity)
+            
+            # 生成计划
+            return self._generate_plan()
+        else:
+            # 需要澄清，生成问题
+            questions = result.get("questions", [])
+            if not questions:
+                # fallback: 使用简单问题
+                questions = self._generate_default_questions(message)
+            
+            return {
+                "response": self._format_questions_for_user(questions),
+                "questions": questions,
+                "state": "clarifying",
+                "done": False,
+                "skill_requests": []
+            }
+
+    def _format_questions_for_user(self, questions: list) -> str:
+        """
+        格式化问题，面向用户输出
+        """
+        if not questions:
+            return "请告诉我更多细节吧。"
+        
+        intro = "🎵 **让我确认一下：**\n\n"
+        
+        q_list = []
+        for i, q in enumerate(questions[:5], 1):
+            topic = q.get("topic", "")
+            text = q.get("question", str(q))
+            q_list.append(f"{i}. **{text}**")
+        
+        return intro + "\n".join(q_list) + "\n\n请告诉我吧。"
+
+    def _generate_default_questions(self, requirement: str) -> list:
+        """
+        生成默认问题（当专家视角没有生成问题时）
+        """
+        # 简单规则检测
+        vague_words = ["搞", "弄", "优化", "改进", "看看", "研究", "了解"]
+        has_vague = any(w in requirement.lower() for w in vague_words)
+        
+        questions = []
+        
+        if has_vague:
+            questions.append({
+                "question": "你能具体说说想达成什么目标吗？",
+                "topic": "目标明确",
+                "source": "rule_based"
+            })
+        
+        if "等" in requirement or "什么的" in requirement:
+            questions.append({
+                "question": "具体包含哪些内容呢？",
+                "topic": "范围界定",
+                "source": "rule_based"
+            })
+        
+        if len(questions) < 2:
+            questions.append({
+                "question": "有什么具体的时间要求或限制吗？",
+                "topic": "约束条件",
+                "source": "rule_based"
+            })
+        
+        return questions
+
+    def _process_user_answers(self, answers: dict) -> dict:
+        """
+        处理用户对问题的回答
+        """
+        # 存储回答
+        existing_answers = self._context.get("user_answers", {})
+        existing_answers.update(answers)
+        self._context.set("user_answers", existing_answers)
+        
+        # 更新需求描述
+        requirement = self._context.get("requirement", "")
+        updated_requirement = self._build_requirement_from_answers(requirement, answers)
+        self._context.set("requirement", updated_requirement)
+        
+        # 存储到记忆
+        for key, value in answers.items():
+            self._store_preference(key, value)
+        
+        return None  # 让下一步决定做什么
+
+    def _build_requirement_from_answers(self, original: str, answers: dict) -> str:
+        """
+        根据回答构建更完整的需求描述
+        """
+        pieces = [original] if original else []
+        for key, value in answers.items():
+            if value:
+                pieces.append(f"{key}: {value}")
+        return "; ".join(pieces)
+
+    def _generate_plan(self) -> dict:
+        """
+        生成计划
+        """
+        requirement = self._context.get("requirement", "")
+        
+        # 调用 team 技能制定计划（如果可用）
+        team_result = self._delegate_to_team([
+            {"task": "制定计划", "description": requirement}
+        ])
+        
+        plan_text = f"📋 **根据你的需求，我帮你梳理了这样的路径：**\n\n"
+        
+        # 简单计划（后续可以调用 team 的详细规划）
+        steps = [
+            f"📝 **需求**：{requirement}",
+            f"📊 **明确度**：{self._context.get('clarity_score', 0):.0%}",
+            "\n🎯 **建议的下一步**：",
+            "1. 明确具体目标和范围",
+            "2. 收集必要信息和资料",
+            "3. 分解任务，逐步执行"
+        ]
+        
+        plan_text += "\n".join(steps)
+        plan_text += "\n\n这个方向对吗？我们可以继续细化。"
+        
+        return {
+            "response": plan_text,
+            "state": "planning",
+            "done": False,
+            "skill_requests": []
+        }
+
+    def _decide_next_step(self) -> dict:
+        """
+        根据当前状态决定下一步
+        """
+        phase = self._context.get("symphony_phase", "clarifying")
+        
+        if phase == "clarifying":
+            return {
+                "response": "还有什么需要我了解的吗？",
+                "state": "clarifying",
+                "done": False
+            }
+        elif phase == "planning":
+            return {
+                "response": "计划进行得怎么样了？需要调整吗？",
+                "state": "planning",
+                "done": False
+            }
+        elif phase == "executing":
+            return {
+                "response": "执行中...有什么进展我会告诉你。",
+                "state": "executing",
+                "done": False
+            }
+        
+        return {
+            "response": "有什么需要我帮忙的吗？",
+            "state": "completed",
+            "done": True
+        }
+
+    def _handle_plan_confirmation(self, message: str) -> dict:
+        """
+        处理用户对计划的确认/调整
+        """
+        msg_lower = message.lower()
+        
+        if any(w in msg_lower for w in ["好", "行", "可以", "开始", "执行", "对", "没错"]):
+            self._context.set("symphony_phase", "executing")
+            return {
+                "response": "🎵 **明白，开始协调各方成员！**\n\n我将调用 memory 记录你的需求，search 搜索相关信息，team 执行具体任务。\n\n稍等，正在启动...",
+                "state": "executing",
+                "done": False,
+                "skill_requests": [
+                    {"skill": "memory", "action": "store", "params": {"type": "context", "content": self._context.get("requirement", "")}},
+                    {"skill": "search", "action": "search", "params": {"query": self._context.get("requirement", "")}}
+                ]
+            }
+        elif any(w in msg_lower for w in ["不对", "调整", "改", "不是"]):
+            return {
+                "response": "好的，请告诉我你想怎么调整？",
+                "state": "planning",
+                "done": False
+            }
+        else:
+            return {
+                "response": "请告诉我：可以开始执行吗？或者需要调整？",
+                "state": "planning",
+                "done": False
+            }
+
+    def _handle_execution_progress(self, message: str) -> dict:
+        """
+        处理执行中的进度询问或新指令
+        """
+        return {
+            "response": "🎵 **执行中**\n\n我在持续协调各方。有新进展会告诉你。\n\n你有什么要补充的吗？",
+            "state": "executing",
+            "done": False
+        }
+
+    def _handle_completion(self, message: str) -> dict:
+        """
+        处理已完成状态
+        """
+        # 检查是否有新需求
+        if message and len(message) > 3:
+            # 新需求，重新开始
+            self._context.set("symphony_phase", "clarifying")
+            self._context.set("requirement", message)
+            return self._clarify_requirement(message)
+        
+        return {
+            "response": "✅ 有什么需要再找我。交响乐随时待命！🎵",
+            "state": "completed",
+            "done": True
+        }
+
+    def _process_skill_results(self, results: dict):
+        """
+        处理技能执行结果
+        """
+        for skill_name, result in results.items():
+            if skill_name == "memory" and result.get("success"):
+                self._context.set("memory_stored", True)
+            elif skill_name == "search" and result.get("success"):
+                self._context.set("search_results", result.get("data", {}))
+
+    def _store_requirement(self, requirement: str):
+        """
+        存储需求到记忆
+        """
+        self._context.set("requirement", requirement)
+        
+        # 尝试调用 memory
+        try:
+            self.call_memory("store", {
+                "type": "context",
+                "content": requirement,
+                "importance": 0.8,
+                "tags": ["requirement", "symphony"]
+            })
+        except Exception as e:
+            logging.warning(f"Failed to store requirement: {e}")
+
+    def _store_preference(self, key: str, value: str):
+        """
+        存储用户偏好
+        """
+        try:
+            self.call_memory("store", {
+                "type": "preference",
+                "content": value,
+                "importance": 0.7,
+                "tags": ["preference", key, "symphony"],
+                "metadata": {"key": key}
+            })
+        except Exception as e:
+            logging.warning(f"Failed to store preference: {e}")
 
     # ==================== 调用其他技能 ====================
 
