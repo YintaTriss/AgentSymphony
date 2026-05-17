@@ -1,20 +1,15 @@
 #!/usr/bin/env python
 """
-AgentSymphony CLI 入口
+AgentSymphony CLI - 交互式入口
 
 用法：
   python agent_symphony_cli.py "你的需求"
-  
-或者交互模式：
-  python agent_symphony_cli.py -i
-
-示例：
-  python agent_symphony_cli.py "我想搞量化交易"
+  python agent_symphony_cli.py -i        # 交互模式
+  python agent_symphony_cli.py --test   # 测试对话模式
 """
 
 import sys
 import os
-import json
 
 # 添加父目录到路径
 SYMPHONY_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -26,149 +21,43 @@ from agent_symphony.skills.search import SearchSkill
 from agent_symphony.shared import SharedContext
 
 
-def print_banner():
-    print("=" * 50)
-    print("🎵 AgentSymphony 技能交响乐")
-    print("=" * 50)
-
-
-def print_result(label, data, indent=2):
-    """格式化打印结果"""
-    prefix = " " * indent
-    if isinstance(data, dict):
-        print(f"{prefix}{label}:")
-        for k, v in data.items():
-            if isinstance(v, (dict, list)):
-                print_result(k, v, indent + 2)
-            else:
-                print(f"{prefix}  {k}: {v}")
-    elif isinstance(data, list):
-        print(f"{prefix}{label}:")
-        for i, item in enumerate(data[:10], 1):
-            print(f"{prefix}  {i}. {item}")
-    else:
-        print(f"{prefix}{label}: {data}")
-
-
-def run_analysis(requirement: str, interactive: bool = False):
-    """运行分析"""
-    print(f"\n🎵 启动交响乐...")
-    print(f"📝 需求: {requirement}\n")
+class SymphonyRunner:
+    """交响乐运行器 - 用于测试 dialog 模式"""
     
-    # 初始化
-    context = SharedContext()
-    thinking = ThinkingSkill()
-    memory = MemorySkill()
-    search = SearchSkill()
+    def __init__(self):
+        self.context = SharedContext()
+        self.thinking = ThinkingSkill()
+        self.memory = MemorySkill()
+        self.search = SearchSkill()
+        
+        # 链接技能
+        self.thinking.link_skill("memory", self.memory)
+        self.thinking.link_skill("search", self.search)
+        
+        # 标记为用户直接调用
+        self.context.set_caller("user", "cli")
     
-    # 注册技能
-    context.register_skill("thinking", thinking)
-    context.register_skill("memory", memory)
-    context.register_skill("search", search)
-    
-    # 设置为用户直接调用
-    context.set_caller("user", "cli")
-    
-    print("🔄 理解需求...\n")
-    
-    try:
-        # 理解需求
-        result = thinking.execute("understand", {"requirement": requirement})
-        
-        clarity = result.get("clarity_score", 0)
-        can_proceed = result.get("can_proceed", False)
-        message = result.get("message", "")
-        
-        print(f"📊 需求明确度: {clarity:.0%}")
-        print(f"📝 分析: {message}\n")
-        
-        if not can_proceed:
-            questions = result.get("questions", [])
-            if questions:
-                print(f"❓ 需要澄清 ({len(questions)} 个问题):\n")
-                for i, q in enumerate(questions[:5], 1):
-                    topic = q.get("topic", "")
-                    q_text = q.get("question", "")
-                    print(f"  {i}. [{topic}] {q_text}")
-                
-                if interactive:
-                    print("\n请回答以上问题（输入 'q' 退出）:\n")
-                    answers = []
-                    for i, q in enumerate(questions[:5], 1):
-                        answer = input(f"Q{i}: ").strip()
-                        if answer.lower() == 'q':
-                            print("\n👋 退出")
-                            return
-                        answers.append({"question": q.get("question"), "answer": answer})
-                    
-                    # 带答案继续
-                    print("\n🔄 继续分析...\n")
-                    result = thinking.execute("clarify", {
-                        "requirement": requirement,
-                        "answers": answers
-                    })
-        
-        # 创建计划
-        print("📋 制定计划...\n")
-        plan_result = thinking.execute("plan", {"requirement": requirement})
-        
-        plan = plan_result.get("plan", [])
-        if plan:
-            for i, step in enumerate(plan[:5], 1):
-                desc = step.get("description", step.get("task", ""))
-                agent = step.get("agent", "")
-                print(f"  {i}. {desc}")
-                if agent:
-                    print(f"     → 执行者: {agent}")
-        else:
-            message = plan_result.get("message", "暂无计划")
-            print(f"  {message}")
-        
-        # 存储到记忆
-        print("\n💾 存储到记忆...")
-        store_result = memory.execute("store", {
-            "type": "context",
-            "content": f"用户需求: {requirement}",
-            "importance": 0.8,
-            "tags": ["requirement", "cli"]
+    def run_once(self, message: str, answers: dict = None, skill_results: dict = None) -> dict:
+        """运行一次对话"""
+        return self.thinking.execute("dialog", {
+            "message": message or "",
+            "answers": answers or {},
+            "skill_results": skill_results or {}
         })
-        
-        if store_result.get("success"):
-            print("  ✅ 已存储")
-        
-        print("\n" + "=" * 50)
-        print("✅ 分析完成！")
+    
+    def run_interactive(self):
+        """交互模式"""
         print("=" * 50)
+        print("🎵 AgentSymphony 交响乐 - 指挥模式")
+        print("=" * 50)
+        print()
+        print("输入 'q' 退出，输入 'restart' 重新开始")
+        print()
         
-        # 如果是交互模式，给出建议的下一步
-        if interactive:
-            print("\n💡 建议的下一步:")
-            print("  - 输入 'memory' 查看记忆")
-            print("  - 输入 'search XXX' 搜索信息")
-            print("  - 输入 'plan' 查看完整计划")
-            print("  - 输入 'q' 退出")
+        done = False
         
-    except Exception as e:
-        print(f"\n❌ 错误: {e}")
-        import traceback
-        traceback.print_exc()
-
-
-def interactive_mode():
-    """交互模式"""
-    print_banner()
-    print("\n🎯 交互模式 - 随时输入 'q' 退出\n")
-    
-    context = SharedContext()
-    memory = MemorySkill()
-    search = SearchSkill()
-    
-    # 注册技能
-    context.register_skill("memory", memory)
-    context.register_skill("search", search)
-    
-    while True:
-        try:
+        while not done:
+            # 获取用户输入
             user_input = input("\n👤 你: ").strip()
             
             if not user_input:
@@ -178,47 +67,111 @@ def interactive_mode():
                 print("\n👋 再见！")
                 break
             
-            if user_input.lower() == 'memory':
-                # 查看记忆
-                print("\n📚 记忆内容:")
-                result = memory.execute("semantic_search", {"query": "", "limit": 10})
-                for r in result.get("results", []):
-                    print(f"  - [{r.get('type')}] {r.get('content', '')[:50]}...")
+            if user_input.lower() == 'restart':
+                # 重新开始
+                self.context = SharedContext()
+                self.thinking = ThinkingSkill()
+                self.thinking.link_skill("memory", self.memory)
+                self.thinking.link_skill("search", self.search)
+                print("\n🔄 已重新开始\n")
+                # 重新触发开场
+                result = self.run_once("")
+                print(f"\n🎵 指挥: {result.get('response', '')}")
                 continue
             
-            if user_input.lower().startswith('search '):
-                # 搜索
-                query = user_input[7:].strip()
-                print(f"\n🔍 搜索: {query}")
-                result = search.execute("search", {"query": query, "max_results": 3})
-                for r in result.get("data", {}).get("results", [])[:3]:
-                    print(f"  - {r.get('title', 'Untitled')}")
-                    print(f"    {r.get('url', '')}")
-                continue
+            # 运行对话
+            result = self.run_once(user_input)
             
-            # 其他当作需求处理
-            run_analysis(user_input, interactive=True)
+            # 打印回复
+            response = result.get("response", "")
+            print(f"\n🎵 指挥: {response}")
             
-        except KeyboardInterrupt:
-            print("\n\n👋 再见！")
-            break
+            # 处理技能申请
+            skill_requests = result.get("skill_requests", [])
+            if skill_requests:
+                print(f"\n📋 技能申请: {len(skill_requests)} 个")
+                for req in skill_requests:
+                    skill = req.get("skill", "?")
+                    action = req.get("action", "?")
+                    print(f"  - {skill}.{action}")
+                
+                # 模拟执行（简化版）
+                # 实际使用时 OpenClaw 会执行这些
+                results = {}
+                for req in skill_requests:
+                    skill = req.get("skill")
+                    # 这里简化处理，不真正执行
+                    results[skill] = {"success": True, "data": {}}
+                
+                # 回调结果
+                result = self.run_once("", skill_results=results)
+                if result.get("response"):
+                    print(f"\n🎵 指挥: {result.get('response', '')}")
+            
+            # 检查是否完成
+            done = result.get("done", False)
+            if done:
+                print("\n✅ 交响乐会话结束")
+        
+        print("\n" + "=" * 50)
+
+
+def test_dialog_mode():
+    """测试对话模式"""
+    print("=" * 50)
+    print("🎵 测试对话模式")
+    print("=" * 50)
+    
+    runner = SymphonyRunner()
+    
+    # 测试1: 开场
+    print("\n\n【测试1: 开场】")
+    result = runner.run_once("")
+    print(f"指挥: {result.get('response', '')}")
+    print(f"状态: {result.get('state', '?')}, 完成: {result.get('done', '?')}")
+    
+    # 测试2: 提出需求
+    print("\n\n【测试2: 提出需求】")
+    result = runner.run_once("我想搞量化交易")
+    print(f"指挥: {result.get('response', '')}")
+    print(f"状态: {result.get('state', '?')}, 完成: {result.get('done', '?')}")
+    
+    # 如果需要澄清
+    if result.get("questions"):
+        print(f"\n问题: {len(result['questions'])} 个")
+        for q in result["questions"][:2]:
+            print(f"  - {q.get('question', '')}")
+    
+    # 测试3: 回答问题
+    print("\n\n【测试3: 回答问题】")
+    result = runner.run_once("完全新手，想实盘赚钱")
+    print(f"指挥: {result.get('response', '')}")
+    print(f"状态: {result.get('state', '?')}, 完成: {result.get('done', '?')}")
+    
+    print("\n" + "=" * 50)
+    print("✅ 测试完成")
 
 
 def main():
     args = sys.argv[1:]
     
-    if "-i" in args or "--interactive" in args:
-        interactive_mode()
+    if "--test" in args or "-t" in args:
+        test_dialog_mode()
+    elif "-i" in args or "--interactive" in args:
+        runner = SymphonyRunner()
+        runner.run_interactive()
     elif len(args) == 0:
-        print_banner()
-        print("\n用法:")
-        print("  python agent_symphony_cli.py \"你的需求\"")
-        print("  python agent_symphony_cli.py -i")
-        print("\n示例:")
-        print('  python agent_symphony_cli.py "我想搞量化交易"')
+        print("AgentSymphony CLI")
+        print()
+        print("用法:")
+        print("  python agent_symphony_cli.py -i          # 交互模式")
+        print("  python agent_symphony_cli.py --test     # 测试对话模式")
+        print("  python agent_symphony_cli.py \"你的需求\"   # 单次对话")
     else:
         requirement = " ".join(args)
-        run_analysis(requirement)
+        runner = SymphonyRunner()
+        result = runner.run_once(requirement)
+        print(f"\n🎵 指挥: {result.get('response', '')}")
 
 
 if __name__ == "__main__":
