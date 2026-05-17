@@ -261,4 +261,10 @@ class SymphonySession:
 
 ---
 
+## 集成文档
+
+- [OpenClaw 集成指南](OPENCLAW_INTEGRATION.md) - 详细的 OpenClaw 接入说明
+
+---
+
 _技能交响乐 · Agent Symphony_
