@@ -503,85 +503,90 @@ class ThinkingSkill:
 
     def _select_perspectives_for(self, phase: str, requirement: str) -> list[str]:
         """
-        thinking 技能作为指挥家，主动选择需要调用的专家团/方法论
+        thinking 技能作为指挥家，直接根据需求选择最相关的专家
+        
+        不依赖 LLMRouter，由 thinking（LLM）根据专家描述自主选择
         
         Args:
             phase: 当前阶段 (clarifying | planning | executing)
             requirement: 用户需求
         
         Returns:
-            perspective ID 列表
+            perspective ID 列表（2-4个精选）
         """
-        # 各阶段对应的专家团配置
-        # 阶段配置：Python专家 + SKILL.md专家
-        PHASE_PERSPECTIVES = {
-            "clarifying": [
-                # Python 专家
-                "stakeholder",       # 利益相关者 - 理解各方诉求
-                "meta_thinking",     # 元认知 - 发现思维盲点
-                "risk_detail",       # 风险视角 - 识别隐患
-                "magi_debate",       # 辩论 - 权衡利弊
-                "doubt",             # 怀疑 - 费曼检验
-                "past_experience",   # 过往经验 - 避免重复犯错
-                # SKILL.md 专家
-                "bayesian-perspective",        # 贝叶斯 - 概率更新/信念修正
-                "gametheory-perspective",      # 博弈论 - 博弈结构诊断
-                "criticalthinking-perspective", # 批判性思维 - 逻辑陷阱识别
-            ],
-            "planning": [
-                # Python 专家
-                "stakeholder",       # 利益相关者 - 确认目标
-                "jobs",             # 乔布斯 - 产品思维
-                "naval",            # Naval - 决策方法论
-                "risk_detail",       # 风险视角 - 评估风险
-                "vcp",              # VCP - 节奏把控
-                "magi_debate",       # 辩论 - 方案权衡
-                # SKILL.md 专家
-                "bayesian-perspective",        # 贝叶斯 - 概率评估
-                "designthinking-perspective",   # 设计思维 - 用户中心设计
-                "systems-perspective",         # 系统思维 - 整体优化
-                "complexity-perspective",      # 复杂性 - 非线性思维
-                "network-perspective",         # 网络效应 - 规模化思维
-            ],
-            "executing": [
-                # Python 专家
-                "verification",      # 验证 - 检查结果
-                "stakeholder",      # 利益相关者 - 确认满意度
-                "meta_thinking",    # 元认知 - 反思执行
-                "risk_detail",      # 风险视角 - 监控风险
-                # SKILL.md 专家
-                "information-perspective",     # 信息论 - 噪声过滤
-                "statistical-perspective",    # 统计 - 效果验证
-                "network-perspective",         # 网络 - 传播分析
-            ],
-            "completed": [
-                # Python 专家
-                "meta_thinking",    # 元认知 - 总结经验
-                "verification",     # 验证 - 确认结果
-                # SKILL.md 专家
-                "bayesian-perspective",        # 贝叶斯 - 事后复盘
-                "complexity-perspective",      # 复杂性 - 模式识别
-            ],
+        # 专家擅长领域参考（thinking 根据这些选择）
+        AVAILABLE_EXPERTS = {
+            # 通用
+            "stakeholder": "理解各方利益诉求、用户需求",
+            "meta_thinking": "发现思维盲点、分析框架反思",
+            "risk_detail": "识别风险、隐患、漏洞",
+            "magi_debate": "正反方辩论、权衡利弊",
+            "doubt": "费曼检验、质疑假设",
+            "past_experience": "避免重复犯错、经验借鉴",
+            "verification": "验证结果、检查完成度",
+            # 产品/商业
+            "jobs": "产品创意、用户体验、简约思维",
+            "elon": "技术创新、规模化、10x思维",
+            "naval": "决策方法论、长期主义",
+            "turing": "计算理论、技术可行性",
+            # 思维方法
+            "bayesian-perspective": "概率更新、信念修正",
+            "designthinking-perspective": "用户中心设计、迭代原型",
+            "criticalthinking-perspective": "逻辑谬误、论证结构",
+            "systems-perspective": "整体优化、系统动力学",
+            "complexity-perspective": "非线性思维、涌现",
+            "network-perspective": "网络效应、规模化",
+            "information-perspective": "信息论、噪声过滤",
+            "gametheory-perspective": "博弈结构、策略互动",
         }
         
-        # 优先尝试 LLM 智能路由
-        if self._router and hasattr(self._router, '_route_llm'):
-            try:
-                routing_result = self._router.route(requirement, mode="llm")
-                if routing_result.activated:
-                    return routing_result.activated
-            except Exception:
-                pass  # Fallback to hardcoded config
+        # 根据 phase 确定候选范围
+        if phase == "clarifying":
+            candidates = ["stakeholder", "meta_thinking", "risk_detail", "magi_debate", "doubt", "past_experience", "bayesian-perspective", "designthinking-perspective"]
+        elif phase == "planning":
+            candidates = ["stakeholder", "jobs", "risk_detail", "designthinking-perspective", "systems-perspective", "bayesian-perspective", "naval"]
+        else:
+            candidates = list(AVAILABLE_EXPERTS.keys())
         
-        # Fallback: 使用阶段配置的专家团
-        selected = PHASE_PERSPECTIVES.get(phase, PHASE_PERSPECTIVES["clarifying"])
+        # 检查哪些在 registry 中可用
+        available = {p.id for p in self._super_registry.list_all()} if self._super_registry else set()
+        candidates = [e for e in candidates if e in available]
         
-        # 检查这些 perspective 是否在 registry 中可用
-        available = [p.id for p in self._super_registry.list_all()] if self._super_registry else []
-        if available:
-            selected = [p for p in selected if p in available]
+        # thinking 直接选 2-4 个最相关的（根据需求关键词判断）
+        req_lower = requirement.lower()
         
-        return selected
+        selected = []
+        # 风险相关
+        if any(w in req_lower for w in ["风险", "担心", "怕", "不确定", "安全", "稳妥"]):
+            selected.append("risk_detail")
+        # 创意/产品相关
+        if any(w in req_lower for w in ["创意", "产品", "设计", "用户体验", "ui", "ux", "界面"]):
+            selected.append("jobs")
+        # 技术相关
+        if any(w in req_lower for w in ["技术", "实现", "架构", "算法", "代码", "系统", "性能"]):
+            selected.append("turing")
+        # 商业/决策相关
+        if any(w in req_lower for w in ["商业", "盈利", "市场", "竞争", "战略", "投资"]):
+            selected.append("naval")
+        # 逻辑/分析相关
+        if any(w in req_lower for w in ["分析", "逻辑", "论证", "推理", "思考"]):
+            selected.append("meta_thinking")
+        
+        # 至少选1个利益相关者
+        if not selected:
+            selected = ["stakeholder", "meta_thinking"]
+        
+        # 确保在候选范围内，且去重
+        selected = [e for e in selected if e in candidates][:4]
+        if len(selected) < 2:
+            # 补齐到2个
+            for c in candidates:
+                if c not in selected:
+                    selected.append(c)
+                    if len(selected) >= 2:
+                        break
+        
+        return selected[:4]  # 最多4个
     
     def _analyze_with_jury(self, requirement: str) -> dict:
         """
