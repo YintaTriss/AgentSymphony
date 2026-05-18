@@ -1034,6 +1034,30 @@ class ThinkingSkill:
         """
         处理执行中的进度询问或新指令
         """
+        msg_lower = message.lower()
+
+        # 检查：用户说完成了
+        if any(w in msg_lower for w in ["完成", "结束了", "好了", "done", "完成了", "好了"]):
+            self._context.set("symphony_phase", "completed")
+            return {
+                "response": "* 交响乐已完成！\n\n你的任务已协调各方完成。有什么需要再找我！",
+                "state": "completed",
+                "done": True
+            }
+
+        # 检查：技能是否都已完成
+        memory_done = self._context.get("memory_stored")
+        search_done = bool(self._context.get("search_results"))
+
+        if memory_done and search_done:
+            # 所有技能都完成了，可以结束
+            self._context.set("symphony_phase", "completed")
+            return {
+                "response": "* 交响乐已完成！\n\nmemory 已记录你的需求，search 已返回结果。各方任务完成。\n\n有什么需要再找我！",
+                "state": "completed",
+                "done": True
+            }
+
         return {
             "response": "* 执行中\n\n我在持续协调各方。有新进展会告诉你。\n\n你有什么要补充的吗？",
             "state": "executing",
