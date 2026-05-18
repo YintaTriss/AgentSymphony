@@ -28,9 +28,9 @@
 
 ## 概述
 
-AgentSymphony（技能交响乐）是一个多技能协作**工作流**，不是独立程序。AI 助手（楚灵）就是这个工作流的**指挥者**，没有额外的"指挥家"角色。
+AgentSymphony（技能交响乐）是一个多技能协作**工作流**，不是独立程序。AI 助手就是这个工作流的**指挥者**，没有额外的"指挥家"角色。
 
-**AI 助手（楚灵）在交响乐中的职责：**
+**AI 助手在交响乐中的职责：**
 - 判断何时启动交响乐（被动触发 + 主动判断）
 - 通过 thinking 技能与用户对话澄清需求
 - 协调所有技能的调用时机（memory、search、AgentTeam）
@@ -58,7 +58,7 @@ AgentSymphony（技能交响乐）是一个多技能协作**工作流**，不是
 ```
 用户描述需求
     ↓
-thinking 技能 ← AI助手（楚灵）主导：提问、澄清、分析
+thinking 技能 ← AI助手（指挥者）主导：提问、澄清、分析
     ↓
 memory 技能 ← 需求/计划明确后存入记忆
     ↓
@@ -80,7 +80,7 @@ OpenClaw 消息处理器
     ↓
 Skill Matching（检测到交响乐需求）
     ↓
-SymphonySession（AI助手楚灵在内部协调）
+SymphonySession（AI助手指挥者在内部协调）
     ↓
 thinking / memory / search / AgentTeam 技能
     ↓
