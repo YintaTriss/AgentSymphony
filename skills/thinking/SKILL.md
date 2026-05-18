@@ -4,6 +4,11 @@ version: 2.3.0
 family: agent-symphony
 role: coordinator
 description: 思考技能 - 协调者，负责理解需求、提问、分析、规划、反思
+triggers:
+  - 交响乐
+  - symphony
+  - 思考
+  - thinking
 ---
 
 # thinking 思考技能
