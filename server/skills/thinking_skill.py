@@ -183,8 +183,11 @@ class ThinkingSkill:
         # 如果不是 symphony 任务，先走澄清流程
         if not is_symphony:
             # 非 symphony 消息，检查是否需要触发技能（单技能执行）
-            if self._check_skill_trigger(user_message):
+            triggered_skill = self._check_skill_trigger(user_message)
+            if triggered_skill:
                 ctx.state = State.EXECUTING
+                # 直接从用户消息中提取技能请求，不经过 planning
+                ctx.skill_requests = self._extract_skill_from_message(user_message, triggered_skill)
 
         if ctx.state == State.CLARIFYING:
             return await self._do_clarifying(ctx)
@@ -203,13 +206,23 @@ class ThinkingSkill:
                 return True
         return False
 
-    def _check_skill_trigger(self, message: str) -> bool:
-        """检查是否触发了技能（仅在 symphony 内部执行阶段）"""
+    def _check_skill_trigger(self, message: str) -> str | None:
+        """检查是否触发了技能，返回技能名或 None"""
         for skill, triggers in SKILL_TRIGGERS.items():
             for t in triggers:
                 if t in message:
-                    return True
-        return False
+                    return skill
+        return None
+
+    def _extract_skill_from_message(self, message: str, skill: str) -> list[dict]:
+        """从用户消息中提取技能参数"""
+        if skill == "search":
+            return [{"skill": "search", "action": "execute", "params": {"query": message}}]
+        elif skill == "team":
+            return [{"skill": "team", "action": "execute", "params": {"task": message}}]
+        elif skill == "memory":
+            return [{"skill": "memory", "action": "execute", "params": {"content": message}}]
+        return []
 
     async def _do_clarifying(self, ctx: ThinkingContext) -> dict:
         """澄清阶段"""
@@ -245,7 +258,7 @@ class ThinkingSkill:
             if "问题：" in response or "？" in response:
                 return {
                     "response": response,
-                    "state": State.CLARIFYING,
+                    "state": State.CLARIFYING.value,
                     "questions": [response],
                     "skill_requests": [],
                     "done": False,
@@ -255,7 +268,7 @@ class ThinkingSkill:
 
         return {
             "response": response,
-            "state": State.CLARIFYING,
+            "state": State.CLARIFYING.value,
             "questions": [response],
             "skill_requests": [],
             "done": False,
@@ -286,7 +299,7 @@ class ThinkingSkill:
 
         return {
             "response": response,
-            "state": State.EXECUTING,
+            "state": State.EXECUTING.value,
             "questions": [],
             "skill_requests": skill_requests,
             "done": False,
@@ -313,7 +326,7 @@ class ThinkingSkill:
         # 执行完成后调用 complete(result) 进入 completed
         return {
             "response": "正在执行计划...",
-            "state": State.EXECUTING,
+            "state": State.EXECUTING.value,
             "questions": [],
             "skill_requests": ctx.skill_requests,
             "done": False,
@@ -338,7 +351,7 @@ class ThinkingSkill:
 
         return {
             "response": response,
-            "state": State.COMPLETED,
+            "state": State.COMPLETED.value,
             "questions": [],
             "skill_requests": [],
             "done": True,

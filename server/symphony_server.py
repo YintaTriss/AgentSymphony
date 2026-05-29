@@ -24,7 +24,10 @@ from pydantic import BaseModel
 import uvicorn
 
 from .config import load_config, get_server_config
-from .skills.thinking_skill import ThinkingSkill
+from .skills.thinking_skill import ThinkingSkill, State
+from .skills.search_skill import SearchSkill
+from .skills.memory_skill import MemorySkill
+from .skills.team_skill import TeamSkill
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("symphony")
@@ -41,6 +44,9 @@ app.add_middleware(
 
 # 全局技能实例
 thinking_skill = ThinkingSkill()
+search_skill = SearchSkill()
+memory_skill = MemorySkill()
+team_skill = TeamSkill()
 
 
 # ── 请求模型 ────────────────────────────────────────────────────────
@@ -87,15 +93,68 @@ async def health():
 
 # ── Thinking 路由 ─────────────────────────────────────────────────────
 
+async def _execute_skills(skill_requests: list[dict]) -> str:
+    """执行技能请求，返回结果摘要"""
+    results = []
+    for req in skill_requests:
+        skill = req.get("skill", "")
+        params = req.get("params", {})
+
+        if skill == "search":
+            query = params.get("query", "")
+            r = search_skill.execute(query=query, max_results=5)
+            if "error" in r:
+                results.append(f"搜索失败: {r['error']}")
+            else:
+                count = len(r.get("results", []))
+                results.append(f"搜索完成，获得 {count} 条结果")
+
+        elif skill == "team":
+            task = params.get("task", "")
+            r = team_skill.spawn(task=task)
+            if "error" in r:
+                results.append(f"任务执行失败: {r['error']}")
+            else:
+                results.append(f"任务已启动: {r.get('message', '')}")
+
+        elif skill == "memory":
+            content = params.get("content", "")
+            r = memory_skill.store(type_="context", content=content)
+            if "error" in r:
+                results.append(f"记忆存储失败: {r['error']}")
+            else:
+                results.append("已记住")
+
+        else:
+            results.append(f"未知技能: {skill}")
+
+    return "；".join(results) if results else "技能执行完成"
+
+
 @app.post("/thinking/dialog")
 async def dialog(req: DialogRequest):
-    """对话 + 澄清 + 状态推进"""
+    """
+    对话 + 澄清 + 状态推进
+
+    自动执行 skill_requests（search/team/memory），
+    不需要外部回调 complete。
+    """
     try:
         result = await thinking_skill.think(
             user_message=req.message,
             answers=req.answers,
             session_id=req.session_id,
         )
+
+        # 如果是 executing 状态且有技能请求，自动执行
+        if result.get("state") == "executing" and result.get("skill_requests"):
+            skill_results = await _execute_skills(result["skill_requests"])
+            # 执行完成后进入 completed
+            result = await thinking_skill.complete(
+                session_id=req.session_id,
+                result=skill_results,
+            )
+
         return result
     except Exception as e:
         logger.exception("thinking/dialog error")
