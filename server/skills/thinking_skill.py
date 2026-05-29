@@ -42,6 +42,7 @@ class ThinkingContext:
     max_clarifying_rounds: int = 3
     answers: dict[str, str] = field(default_factory=dict)
     plan: str = ""
+    result: str = ""
     skill_requests: list[dict] = field(default_factory=list)
     last_user_message: str = ""
     done: bool = False
@@ -363,6 +364,7 @@ class ThinkingSkill:
         ctx = self.contexts.get(session_id)
         if not ctx:
             return {"error": "session not found"}
+        ctx.result = result  # 保存执行结果
         ctx.state = State.COMPLETED
         return await self._do_completed(ctx, result)
 

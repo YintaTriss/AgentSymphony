@@ -189,10 +189,6 @@ async def state(session_id: str = "default"):
 
 # ── Memory 路由 ───────────────────────────────────────────────────────
 
-from .skills.memory_skill import MemorySkill
-
-memory_skill = MemorySkill()
-
 
 @app.post("/memory/store")
 async def memory_store(req: MemoryStoreRequest):
@@ -234,10 +230,7 @@ async def memory_list(type_filter: str | None = None, limit: int = 20):
 
 # ── Team 路由 ──────────────────────────────────────────────────────
 
-from .skills.team_skill import TeamSkill
 from pydantic import BaseModel
-
-team_skill = TeamSkill()
 
 class TeamSpawnRequest(BaseModel):
     task: str
@@ -290,10 +283,6 @@ async def team_shutdown(session_id: str):
 
 
 # ── Search 路由 ───────────────────────────────────────────────────────
-
-from .skills.search_skill import SearchSkill
-
-search_skill = SearchSkill()
 
 class SearchRequest(BaseModel):
     query: str

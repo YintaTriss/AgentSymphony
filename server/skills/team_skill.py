@@ -172,13 +172,20 @@ class TeamSkill:
 
     def shutdown(self, session_id: str) -> dict:
         """通知 sub-agent 关闭"""
+        # 从 active_sessions 找到 session_key
+        session_key = None
+        for key, info in self.active_sessions.items():
+            if info.get("session_id") == session_id:
+                session_key = key
+                break
+        if not session_key:
+            return {"session_id": session_id, "error": "session not found in active_sessions"}
         try:
             _gateway_call("sessions.send", {
-                "key": session_id,
+                "key": session_key,
                 "message": "shutdown",
             })
-            if session_id in self.active_sessions:
-                del self.active_sessions[session_id]
+            del self.active_sessions[session_key]
             return {"session_id": session_id, "status": "shutdown_sent"}
         except Exception as e:
             return {"session_id": session_id, "error": str(e)}
